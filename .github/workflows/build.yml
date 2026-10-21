@@ -22,23 +22,38 @@ jobs:
           mkdir -p www
           cp index.html www/index.html
           cp node_modules/jszip/dist/jszip.min.js www/jszip.min.js
-      - name: Fixed signing key
-        run: |
-          mkdir -p ~/.android
-          cp debug.keystore ~/.android/debug.keystore
       - name: Create Android project
         run: |
           npx cap add android
           npx cap sync android
-      - name: Set version
+      - name: Set version and fixed signing key
         run: |
           sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i "s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+          cp mangareader.keystore android/mangareader.keystore
+          cat >> android/app/build.gradle <<'EOF'
+
+          android {
+              signingConfigs {
+                  debug {
+                      storeFile file("$rootDir/mangareader.keystore")
+                      storePassword "mangareader"
+                      keyAlias "mangareader"
+                      keyPassword "mangareader"
+                  }
+              }
+          }
+          EOF
+          grep -n "versionCode\|versionName" android/app/build.gradle
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+      - name: Show signature
+        run: |
+          APKSIGNER=$(ls -d $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          $APKSIGNER verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -i "SHA-256" || true
       - uses: actions/upload-artifact@v4
         with:
           name: manga-reader-apk
